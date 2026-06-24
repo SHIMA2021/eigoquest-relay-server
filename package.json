@@ -1,0 +1,9 @@
+{
+  "name": "eigoquest-relay-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "えいごクエスト 発音採点 中継サーバー（Azure AI Speechと通信する）",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
