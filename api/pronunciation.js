@@ -97,6 +97,9 @@ export default async function handler(req, res) {
 
     const azureResult = await azureResponse.json();
 
+    // デバッグ用：Azureの生レスポンスをログに出力
+    console.log('Azure raw result:', JSON.stringify(azureResult, null, 2));
+
     // Azureの詳細な結果から、子供向けの簡易スコア（◎○△）に変換する
     const simplifiedResult = simplifyForKids(azureResult);
 
