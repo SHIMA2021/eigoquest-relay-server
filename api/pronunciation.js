@@ -120,12 +120,15 @@ function simplifyForKids(azureResult) {
   }
 
   const accuracyScore = nBest.PronunciationAssessment.AccuracyScore ?? 0;
+  const recognizedText = (nBest.Display || '').toLowerCase().trim();
 
+  // 認識された単語が正解テキストと一致している場合は、スコアに関わらず最低OK扱い
+  // （Azureが音は聞き取れたが採点が厳しい場合への対策）
   let level;
-  if (accuracyScore >= 80) {
+  if (accuracyScore >= 70) {
     level = 'great'; // ◎
-  } else if (accuracyScore >= 60) {
-    level = 'ok'; // ○
+  } else if (accuracyScore >= 40 || recognizedText.length > 0) {
+    level = 'ok';    // ○
   } else {
     level = 'retry'; // △
   }
