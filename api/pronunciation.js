@@ -67,11 +67,12 @@ export default async function handler(req, res) {
       ReferenceText: referenceText,
       GradingSystem: 'HundredMark',
       Granularity: 'Phoneme',
-      EnableMiscue: false,
+      Dimension: 'Comprehensive',
+      EnableMiscue: 'False',
     };
     const pronAssessmentHeader = Buffer.from(
       JSON.stringify(pronAssessmentParams)
-    ).toString('base64');
+    ).toString('base64').replace(/\n/g, '');
 
     const azureUrl = `https://${AZURE_SPEECH_REGION}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
 
@@ -101,7 +102,7 @@ export default async function handler(req, res) {
     console.log('Azure raw result:', JSON.stringify(azureResult, null, 2));
 
     // Azureの詳細な結果から、子供向けの簡易スコア（◎○△）に変換する
-    const simplifiedResult = simplifyForKids(azureResult);
+    const simplifiedResult = simplifyForKids(azureResult, referenceText);
 
     res.status(200).json(simplifiedResult);
   } catch (err) {
@@ -111,34 +112,37 @@ export default async function handler(req, res) {
 
 // Azureの詳細スコア（0〜100点の精密な数値）を、
 // 9歳児向けの3段階（great / ok / retry）に変換する
-function simplifyForKids(azureResult) {
+function simplifyForKids(azureResult, referenceText) {
   const nBest = azureResult.NBest && azureResult.NBest[0];
+  const recognitionStatus = azureResult.RecognitionStatus;
 
-  if (!nBest || !nBest.PronunciationAssessment) {
-    return {
-      level: 'retry',
-      message: 'もういちど！',
-      rawScore: null,
-    };
+  // Azureが音声を認識できた場合、認識テキストと正解を比較
+  const recognizedText = (azureResult.DisplayText || '').toLowerCase().replace(/[.,!?]/g, '').trim();
+  const reference = (referenceText || '').toLowerCase().trim();
+
+  // PronunciationAssessmentスコアがある場合はそれを使う
+  if (nBest && nBest.PronunciationAssessment) {
+    const accuracyScore = nBest.PronunciationAssessment.AccuracyScore ?? 0;
+    console.log('AccuracyScore:', accuracyScore, 'RecognizedText:', recognizedText);
+
+    let level;
+    if (accuracyScore >= 70) {
+      level = 'great';
+    } else if (accuracyScore >= 40 || recognizedText === reference) {
+      level = 'ok';
+    } else {
+      level = 'retry';
+    }
+    return { level, rawScore: accuracyScore, recognizedText };
   }
 
-  const accuracyScore = nBest.PronunciationAssessment.AccuracyScore ?? 0;
-  const recognizedText = (nBest.Display || '').toLowerCase().trim();
-
-  // 認識された単語が正解テキストと一致している場合は、スコアに関わらず最低OK扱い
-  // （Azureが音は聞き取れたが採点が厳しい場合への対策）
-  let level;
-  if (accuracyScore >= 70) {
-    level = 'great'; // ◎
-  } else if (accuracyScore >= 40 || recognizedText.length > 0) {
-    level = 'ok';    // ○
+  // PronunciationAssessmentスコアがない場合は認識テキストで判定
+  console.log('No PronunciationAssessment score. RecognizedText:', recognizedText, 'Reference:', reference);
+  if (recognitionStatus === 'Success' && recognizedText === reference) {
+    return { level: 'great', rawScore: null, recognizedText };
+  } else if (recognitionStatus === 'Success' && recognizedText.length > 0) {
+    return { level: 'ok', rawScore: null, recognizedText };
   } else {
-    level = 'retry'; // △
+    return { level: 'retry', rawScore: null, recognizedText };
   }
-
-  return {
-    level,
-    rawScore: accuracyScore,
-    recognizedText: nBest.Display || '',
-  };
 }
